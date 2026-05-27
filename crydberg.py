@@ -230,20 +230,29 @@ class MagneticSystem(Network):
         bias = self.get_SIBBias(dmField)       
         self.m = self.solve_SIB(operator, bias)
         
-    # def LLG_1stepHeun(self, dt, alpha, precession, T=0):
-    #     B_noise = B_thermal(self.m, T, dt)
+    def LLG_1stepEuler(self, dt, alpha, precession, B_noise=0):            
+        m_out = self.m + dt*self.get_dmOVERdt(alpha, precession, B_noise)
         
-    #     m0 = self.m
-    #     dmOVERdt_1 = self.get_dmOVERdt(alpha, precession, B_noise)
-    #     self.LLG_1stepEuler(dt, alpha, B_noise)
-    #     dmOVERdt_2 = self.get_dmOVERdt(alpha, precession, B_noise)
-    #     m_out = m0 + dt*(dmOVERdt_1 + dmOVERdt_2)/2
+        # Imposing unity of vector magnitudes
+        norms = cp.linalg.norm(m_out, axis=2)
+        norms = cp.broadcast_to(norms[:, :, None], (self.n_networks, self.N, 3))
+        m_out = m_out/norms
+        self.m = m_out
+    
+    def LLG_1stepHeun(self, dt, alpha, precession, T=0):
+        B_noise = B_thermal(self.m, T, dt)
         
-    #     # Imposing unity of vector magnitudes
-    #     norms = cp.linalg.norm(m_out, axis=1)
-    #     m_out = m_out/norms[:, cp.newaxis]
+        m0 = cp.copy(self.m)
+        dmOVERdt_1 = cp.copy(self.get_dmOVERdt(alpha, precession, B_noise))
+        self.LLG_1stepEuler(dt, alpha, B_noise)
+        dmOVERdt_2 = cp.copy(self.get_dmOVERdt(alpha, precession, B_noise))
+        m_out = m0 + dt*(dmOVERdt_1 + dmOVERdt_2)/2
         
-    #     self.m = m_out
+        # Imposing unity of vector magnitudes
+        norms = cp.linalg.norm(m_out, axis=2)
+        norms = cp.broadcast_to(norms[:, :, None], (self.n_networks, self.N, 3))
+        m_out = m_out/norms
+        self.m = m_out
     
     def LLG_evolve(self, dt, steps, alpha, precession, T=0, method='LLG_1stepHeun'):
         LLG_1step = getattr(self, method)        
